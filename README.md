@@ -143,4 +143,89 @@ MQ比较适合
 消息的关注者不止一个 <br/>
 在一个由多个微服务构成的大系统中，会有一些非关键服务，用来执行一些不需要立刻得到结果的计算。而且它们的计算结果并不会返回给消息的发送者。这个时候就应该使用MQ。
 
+### rabbitmq部分的具体代码实现
+在producer端的test测试代码启动后，会在order中生成order订单内容，
+```
+    @Test
+    public void testSend() throws Exception {
+        Order order = new Order();
+        order.setId(2018092101);
+        order.setName("测试订单1");
+        order.setMessageId(System.currentTimeMillis()+"$"+UUID.randomUUID().toString());
+        orderService.createOrder(order);
+    }
+  ```
+  我们再看orderService创建订单的具体实现
+  ```
+      public void createOrder(Order order) throws Exception {
+        // 使用当前时间当做订单创建时间（为了模拟一下简化）
+        Date orderTime = new Date();
+        // 插入业务数据
+        orderMapper.insert(order);
+        // 插入消息记录表数据
+        BrokerMessageLog brokerMessageLog = new BrokerMessageLog();
+        // 消息唯一ID
+        brokerMessageLog.setMessageId(order.getMessageId());
+        // 保存消息整体 转为JSON 格式存储入库
+        brokerMessageLog.setMessage(FastJsonConvertUtil.convertObjectToJSON(order));
+        // 设置消息状态为0 表示发送中
+        brokerMessageLog.setStatus("0");
+        // 设置消息未确认超时时间窗口为 一分钟
+        brokerMessageLog.setNextRetry(DateUtils.addMinutes(orderTime, Constants.ORDER_TIMEOUT));
+        brokerMessageLog.setCreateTime(new Date());
+        brokerMessageLog.setUpdateTime(new Date());
+        brokerMessageLogMapper.insertSelective(brokerMessageLog);
+        // 发送消息
+        rabbitOrderSender.sendOrder(order);
+    }
+  ```
+以上代码创建了一行order表订单的内容和brokerMessageLog表的内容后，将order内容发送到rabbitOrderSender
+```
+    //发送消息方法调用: 构建自定义对象消息
+    public void sendOrder(Order order) throws Exception {
+        // 通过实现 ConfirmCallback 接口，消息发送到 Broker 后触发回调，确认消息是否到达 Broker 服务器，也就是只确认是否正确到达 Exchange 中
+        rabbitTemplate.setConfirmCallback(confirmCallback);
+        //消息唯一ID
+        CorrelationData correlationData = new CorrelationData(order.getMessageId());
+        rabbitTemplate.convertAndSend("order-exchange", "order.ABC", order, correlationData);
+    }
+```
+作为消息的发送端，convertAndSend要求exchange交换机和routingkey，但它不知道具体的队列是什么。消息的消费端知道交换机，路由键，队列。<br>
+在另外一个model--consumer中，
+```
+@Component
+public class OrderReceiver {
+    //配置监听的哪一个队列，同时在没有queue和exchange的情况下会去创建并建立绑定关系
+    @RabbitListener(bindings = @QueueBinding(
+            value = @Queue(value = "order-queue",durable = "true"),
+            exchange = @Exchange(name="order-exchange",durable = "true",type = "topic"),
+            key = "order.*"
+        )
+    )
+    @RabbitHandler//如果有消息过来，在消费的时候调用这个方法
+    //@Payload 可以理解为一系列信息中最为关键的信息。
+    public void onOrderMessage(@Payload Order order, @Headers Map<String,Object> headers, Channel channel) throws IOException {
+        //消费者操作
+        System.out.println("---------收到消息，开始消费---------");
+        System.out.println("订单ID："+order.getId());
 
+        /**
+         * Delivery Tag 用来标识信道中投递的消息。RabbitMQ 推送消息给 Consumer 时，会附带一个 Delivery Tag，
+         * 以便 Consumer 可以在消息确认时告诉 RabbitMQ 到底是哪条消息被确认了。
+         * RabbitMQ 保证在每个信道中，每条消息的 Delivery Tag 从 1 开始递增。
+         */
+        Long deliveryTag = (Long) headers.get(AmqpHeaders.DELIVERY_TAG);
+
+        /**
+         *  multiple 取值为 false 时，表示通知 RabbitMQ 当前消息被确认
+         *  如果为 true，则额外将比第一个参数指定的 delivery tag 小的消息一并确认
+         */
+        boolean multiple = false;
+
+        //ACK,确认一条消息已经被消费。不然的话，在rabbitmq首页会有Unacked显示为未处理数1.
+        channel.basicAck(deliveryTag,multiple);
+    }
+}
+
+```
+消费端对队列进行了绑定，以及对消费信息后的回调。

@@ -1,12 +1,5 @@
 ## RabbitMQ简单介绍:
 RabbitMQ是一个开源的消息代理和队列服务器，用来通过普通协议在完全不同的应用之间传递数据，RabbitMQ是使用Erlang语言来编写的，并且RabbitMQ是基于AMQP协议的。
-## 学习记录
-1. [RabbitMQ安装与配置](https://github.com/suxiongwei/suxiongwei.github.io/blob/master/article/other/rabbitmq_install.md)
-2. [RabbitMQ：消息发送确认与消息接收确认（ACK）](https://www.jianshu.com/p/2c5eebfd0e95)
-3. [消息中间件选型分析——从Kafka与RabbitMQ的对比来看全局](http://blog.didispace.com/%E6%B6%88%E6%81%AF%E4%B8%AD%E9%97%B4%E4%BB%B6%E9%80%89%E5%9E%8B%E5%88%86%E6%9E%90/)
-4. [RabbitMQ必备核心知识](http://www.imooc.com/article/75201)
-5. [Spring Boot 实现 RabbitMQ 延迟消费和延迟重试队列](https://www.cnblogs.com/xishuai/p/spring-boot-rabbitmq-delay-queue.html)
-
 
 ## 特点：
 1. RabbitMQ底层使用Erlang语言编写，传递效率高，延迟低
@@ -96,7 +89,6 @@ server:
   servlet:
     context-path: /
 ```
-## 完整实例代码[springboot-rabbitmq](https://github.com/suxiongwei/springboot-rabbitmq)
 
 ## 数据库文件
 ```sql
